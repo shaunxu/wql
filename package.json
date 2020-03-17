@@ -1,0 +1,28 @@
+{
+  "name": "wql",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node -r ts-node/register ./sample/app.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shaunxu/wql.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/shaunxu/wql/issues"
+  },
+  "homepage": "https://github.com/shaunxu/wql#readme",
+  "devDependencies": {
+    "@types/lodash": "^4.14.149",
+    "ts-node": "^8.6.2",
+    "typescript": "^3.8.3"
+  },
+  "dependencies": {
+    "lodash": "^4.17.15"
+  }
+}
