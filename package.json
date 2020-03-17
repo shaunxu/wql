@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node -r ts-node/register ./sample/app.ts"
+    "start": "node -r ts-node/register ./sample/app.ts",
+    "rebuild": "rm -rf ./build && tsc"
   },
   "repository": {
     "type": "git",
@@ -19,6 +20,7 @@
   "homepage": "https://github.com/shaunxu/wql#readme",
   "devDependencies": {
     "@types/lodash": "^4.14.149",
+    "@types/node": "^13.9.1",
     "ts-node": "^8.6.2",
     "typescript": "^3.8.3"
   },
