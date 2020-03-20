@@ -21,10 +21,14 @@
   "devDependencies": {
     "@types/lodash": "^4.14.149",
     "@types/node": "^13.9.1",
+    "@types/uuid": "^7.0.2",
     "ts-node": "^8.6.2",
     "typescript": "^3.8.3"
   },
   "dependencies": {
-    "lodash": "^4.17.15"
+    "lodash": "^4.17.15",
+    "sql-parser": "^0.5.0",
+    "syntax-parser": "^1.0.15",
+    "uuid": "^7.0.2"
   }
 }
