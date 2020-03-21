@@ -20,6 +20,7 @@
   "homepage": "https://github.com/shaunxu/wql#readme",
   "devDependencies": {
     "@types/lodash": "^4.14.149",
+    "@types/moment": "^2.13.0",
     "@types/node": "^13.9.1",
     "@types/uuid": "^7.0.2",
     "ts-node": "^8.6.2",
@@ -27,6 +28,7 @@
   },
   "dependencies": {
     "lodash": "^4.17.15",
+    "moment": "^2.24.0",
     "sql-parser": "^0.5.0",
     "syntax-parser": "^1.0.15",
     "uuid": "^7.0.2"
