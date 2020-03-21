@@ -2,7 +2,7 @@ export interface Token {
 
     type: string;
 
-    value: string;
+    value: any;
 
     position: number;
 

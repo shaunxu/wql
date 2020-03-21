@@ -34,9 +34,9 @@ export class Lexer {
                     ">=", ">",
                     "<=", "<",
                     "~", "!~",
-                    "IN", "NOT IN",
-                    "NULL"
+                    "IN", "NOT IN"
                 ]) ||
+                this.tokenizeByNull(position, chunk) ||
                 this.tokenizeByWords(position, chunk, [
                     "AND",
                     "OR"
@@ -57,7 +57,7 @@ export class Lexer {
         return this._tokens;
     }
 
-    private tokenize(type: string, value: string, position: number): void {
+    private tokenize(type: string, value: any, position: number): void {
         this._tokens.push({
             type: type,
             value: value,
@@ -114,7 +114,7 @@ export class Lexer {
     private tokenizeByNumber(position: number, chunk: string): number {
         const match = /^(\+|\-)?[0-9]+(\.[0-9]+)?/i.exec(chunk);
         if (match && match.length > 0) {
-            this.tokenize("NUMBER", match[0], position);
+            this.tokenize("NUMBER", Number(match[0]), position);
             return match[0].length;
         }
         else {
@@ -142,6 +142,15 @@ export class Lexer {
         return 0;
     }
 
+    private tokenizeByNull(position: number, chunk: string): number {
+        const match = /^NULL/i.exec(chunk);
+        if (match && match.length >= 0) {
+            this.tokenize("NULL", null, position);
+            return match[0].length;
+        }
+        return 0;
+    }
+
     private tokenizeByParen(position: number, chunk: string): number {
         {
             const match = /^\(/.exec(chunk);
@@ -155,6 +164,22 @@ export class Lexer {
             const match = /^\)/.exec(chunk);
             if (match && match.length >= 0) {
                 this.tokenize(")", match[0], position);
+                return match[0].length;
+
+            }
+        }
+        {
+            const match = /^\[/.exec(chunk);
+            if (match && match.length >= 0) {
+                this.tokenize("[", match[0], position);
+                return match[0].length;
+
+            }
+        }
+        {
+            const match = /^\]/.exec(chunk);
+            if (match && match.length >= 0) {
+                this.tokenize("]", match[0], position);
                 return match[0].length;
 
             }
