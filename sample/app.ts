@@ -48,7 +48,7 @@ import { Parser3 } from "../src/parser3";
 //     ]
 // };
 // const query = `FROM projects SELECT _id, name WHERE owner = me() AND updated_at >= dateOffset(-1, "w")`;
-const query = `a = 1 and b = 2 or c = 3`;
+const query = `a = 1 and (b = 2 or c = 3)`;
 const lexer = new Lexer(query);
 const tokens = lexer.lex();
 
@@ -64,5 +64,6 @@ console.log(query);
 // console.log(JSON.stringify(parser2.root, undefined, 2));
 
 const parser3 = new Parser3();
-const node = parser3.parse(tokens);
-console.log(JSON.stringify(node, undefined, 2));
+const { top, length, nodes } = parser3.parse(tokens);
+const ast = parser3.build(top.value, nodes);
+console.log(JSON.stringify(ast, undefined, 2));

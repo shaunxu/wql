@@ -69,27 +69,31 @@ export class Parser3 {
         }
     }
 
-    private build(rootKey: string, nodes: Map<string, Node>): Node {
+    public build(rootKey: string, nodes: Map<string, Node>): Node {
         const root = nodes.get(rootKey) as Node;
         this.buildNode(root, nodes);
         return root;
     }
 
-    public parse(tokens: Token[]): Node {
+    public parse(tokens: Token[], start: number = 0): { top: Token, length: number, nodes: Map<string, Node> } {
         const stack: Token[] = [];
         const nodes: Map<string, Node> = new Map<string, Node>();
+        let i = start;
 
-        for (const token of tokens) {
+        while (i <= tokens.length - 1) {
+            const token = tokens[i];
 
             // literal
             if (token.type === "LITERAL") {
                 stack.push(token);
+                i++;
                 continue;
             }
 
             // number
             if (token.type === "NUMBER") {
                 stack.push(token);
+                i++
                 continue;
             }
 
@@ -114,18 +118,47 @@ export class Parser3 {
                     }
                 }
                 stack.push(token);
+                i++;
                 continue;
+            }
+
+            // left paren
+            if (token.type === "(") {
+                const intermediate = this.parse(tokens.slice(i + 1)); // i + 1 means skip the left paren
+                stack.push(intermediate.top);
+                intermediate.nodes.forEach((n, k) => {
+                    nodes.set(k, n);
+                });
+                i = i + intermediate.length;
+                continue;
+            }
+
+            // right paren
+            if (token.type === ")") {
+                while (stack.length > 1) {
+                    this.packgeNode(stack, nodes);
+                }
+                return {
+                    top: stack[0],
+                    length: i + 1, // i + 1 means skip the right paren
+                    nodes: nodes
+                };
+            }
+
+            // eof
+            if (token.type === "EOF") {
+                while (stack.length > 1) {
+                    this.packgeNode(stack, nodes);
+                }
+                return {
+                    top: stack[0],
+                    length: i,
+                    nodes: nodes
+                };
             }
         }
 
-        while (stack.length > 1) {
-            this.packgeNode(stack, nodes);
-        }
-
-        // console.log(stack);
-        // console.log(JSON.stringify([...nodes], undefined, 2));
-
-        return this.build(stack[0].value, nodes);
+        throw new Error(`Parse error`);
     }
 
 }
