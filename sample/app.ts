@@ -1,7 +1,5 @@
 import { Lexer } from "../src/lexer";
 import { Parser } from "../src/parser";
-import { Parser2 } from "../src/parser2";
-import { Parser3 } from "../src/parser3";
 
 //             0         1         2         3         4         5         6         7         8         9
 //             01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
@@ -56,14 +54,6 @@ const tokens = lexer.lex();
 console.log(query);
 // console.log(JSON.stringify(tokens, undefined, 2));
 
-// const parser = new Parser();
-// parser.parse(tokens);
-// console.log(JSON.stringify(parser.stack, undefined, 2));
-
-// const parser2 = new Parser2();
-// parser2.parse(tokens);
-// console.log(JSON.stringify(parser2.root, undefined, 2));
-
-const parser3 = new Parser3();
+const parser3 = new Parser();
 const ast = parser3.parse(tokens);
 console.log(JSON.stringify(ast, undefined, 2));

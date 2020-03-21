@@ -1,91 +1,249 @@
 import { Token } from "./token";
-import { Node, NodeFactory } from "./node-factory";
+import * as uuid from "uuid";
+
+export interface Node {
+    type: string;
+    value: any;
+    left?: Node;
+    right?: Node;
+}
+
+export const OP_PRIORITIES: { [key: string]: number } = {
+    "OR": 1,
+    "AND": 2,
+    "=": 3, "!=": 3, ">": 3, ">=": 3, "<": 3, "<=": 3, "IN": 3, "NOT IN": 3
+};
+
+export const LEFT_TYPES = [
+    "LITERAL",
+    "NODE"
+];
+
+export const RIGHT_TYPES = [
+    "NUMBER",
+    "STRING",
+    "ARRAY",
+    "NULL",
+    "FUNCTION",
+    "NODE"
+];
+
+export const OP_TYPES = Object.keys(OP_PRIORITIES);
 
 export class Parser {
 
-    private _stack: Node[];
-    public get stack(): Node[] {
-        return this._stack;
-    }
-
-    private _parenNodeSize: number;
-
     constructor() {
-        this._stack = [
-            NodeFactory.createRootNode()
-        ];
-        this._parenNodeSize = 0;
     }
 
-    private peek(): Node {
-        return this._stack[this._stack.length - 1];
-    }
-
-    private pop(): Node {
-        return this._stack.pop() as Node;
-    }
-
-    private pushToStack(node: Node): void {
-        this._stack.push(node);
-    }
-
-    private pushToChildren(top: Node, node: Node): void {
-        top.children.push(node);
-    }
-
-    private retire(node: Node): void {
-        const top = this.pop();
-        this.pushToChildren(node, top);
-        this.pushToStack(node);
-    }
-
-    public parse(tokens: Token[]): void {
-        for (const token of tokens) {
-            this.parseToken(token);
+    private peekLastOpToken(stack: Token[]): Token | undefined {
+        for (let i = stack.length - 1; i >= 0; i--) {
+            const token = stack[i];
+            if (Object.keys(OP_PRIORITIES).some(x => x === token.type)) {
+                return token;
+            }
         }
     }
 
-    public parseToken(token: Token): void {
-        const top = this.peek();
+    private packgeNode(stack: Token[], nodes: Map<string, Node>): void {
+        if (stack.length < 3) {
+            throw new Error(`Cannot package a node from stack with less than 3 tokens`);
+        }
 
-        if (token.type === "LITERAL") {
-            if (top.isFull) {
-                throw new Error(`Cannot parse a literal token when top node is full.`);
+        const right = stack.pop() as Token;
+        const op = stack.pop() as Token;
+        const left = stack.pop() as Token;
+
+        if (!LEFT_TYPES.some(x => x === left.type)) {
+            throw new Error(`Invalid left part at ${left.position} ${left.value}`);
+        }
+        if (!RIGHT_TYPES.some(x => x === right.type)) {
+            throw new Error(`Invalid right part at ${right.position} ${right.value}`);
+        }
+        if (!OP_TYPES.some(x => x === op.type)) {
+            throw new Error(`Invalid operator part at ${op.position} ${op.value}`);
+        }
+
+        const node: Node = {
+            type: op.type,
+            value: op.value,
+            left: {
+                type: left.type,
+                value: left.value
+            },
+            right: {
+                type: right.type,
+                value: right.value
             }
-            const lit = NodeFactory.createLiteralNode(token.value);
-            if (top.isNotFull) {
-                throw new Error(`Cannot parse a literal token when top node is not full.`);
+        };
+        const key = uuid.v4();
+        nodes.set(key, node);
+        stack.push({
+            type: "NODE",
+            value: key,
+            position: -1
+        });
+    }
+
+    private buildNode(node: Node, nodes: Map<string, Node>): void {
+        if (node.left && node.left.type === "NODE") {
+            node.left = nodes.get(node.left.value) as Node;
+            this.buildNode(node.left as Node, nodes);
+        }
+        if (node.right && node.right.type === "NODE") {
+            node.right = nodes.get(node.right.value) as Node;
+            this.buildNode(node.right as Node, nodes);
+        }
+    }
+
+    public parse(tokens: Token[]): Node {
+        const { top, nodes } = this.parseTokens(tokens);
+        return this.build(top.value, nodes);
+    }
+
+    private build(rootKey: string, nodes: Map<string, Node>): Node {
+        const root = nodes.get(rootKey) as Node;
+        this.buildNode(root, nodes);
+        return root;
+    }
+
+    private parseArray(tokens: Token[], current: any): number {
+        let i = 0;
+        while (i <= tokens.length - 1) {
+            const token = tokens[i];
+
+            if (token.type === "NUMBER") {
+                current.push(token.value);
+                i++;
+                continue;
             }
-            else {
-                this.pushToStack(lit);
-                return;
+
+            if (token.type === "STRING") {
+                current.push(token.value);
+                i++;
+                continue;
+            }
+
+            if (token.type === "COMMA") {
+                i++;
+                continue;
+            }
+
+            if (token.type === "[") {
+                const sub: any[] = [];
+                current.push(sub);
+                const step = this.parseArray(tokens.slice(i + 1), sub);
+                i = i + step;
+                continue;
+            }
+
+            if (token.type === "]") {
+                return i + 2; // i + 2 means skip the last "]"
             }
         }
 
-        if (["=", "!=", ">", ">=", "<", "<="].some(x => x === token.type)) {
-            if (top.isFull) {
-                const cmp = NodeFactory.createCompareNode(token.type);
-                this.retire(cmp);
-                return;
+        throw new Error(`Parse array failed.`);
+    }
+
+    private parseTokens(tokens: Token[]): { top: Token, length: number, nodes: Map<string, Node> } {
+        const stack: Token[] = [];
+        const nodes: Map<string, Node> = new Map<string, Node>();
+        let i = 0;
+
+        while (i <= tokens.length - 1) {
+            const token = tokens[i];
+
+            // literal
+            if (token.type === "LITERAL") {
+                stack.push(token);
+                i++;
+                continue;
             }
-            else {
-                throw new Error(`Cannot parse a compare token when top node is not full.`);
+
+            // number, null, string, function
+            if (token.type === "NUMBER" || token.type === "NULL" || token.type === "STRING" || token.type === "FUNCTION") {
+                stack.push(token);
+                i++
+                continue;
             }
+
+            // operator (=, !=, >, >=, ...)
+            if (Object.keys(OP_PRIORITIES).some(x => x === token.type)) {
+                let pack = true;
+                while (pack) {
+                    const lastOpToken = this.peekLastOpToken(stack);
+                    if (lastOpToken) {
+                        const lastOpTokenPriority = OP_PRIORITIES[lastOpToken.type];
+                        const thisOpTokenPriority = OP_PRIORITIES[token.type];
+                        if (thisOpTokenPriority < lastOpTokenPriority) {
+                            this.packgeNode(stack, nodes);
+                            pack = true;
+                        }
+                        else {
+                            pack = false;
+                        }
+                    }
+                    else {
+                        pack = false;
+                    }
+                }
+                stack.push(token);
+                i++;
+                continue;
+            }
+
+            // left paren
+            if (token.type === "(") {
+                const intermediate = this.parseTokens(tokens.slice(i + 1)); // i + 1 means skip the left paren
+                stack.push(intermediate.top);
+                intermediate.nodes.forEach((n, k) => {
+                    nodes.set(k, n);
+                });
+                i = i + intermediate.length;
+                continue;
+            }
+
+            // right paren
+            if (token.type === ")") {
+                while (stack.length > 1) {
+                    this.packgeNode(stack, nodes);
+                }
+                return {
+                    top: stack[0],
+                    length: i + 2, // i + 2 means skip the right paren
+                    nodes: nodes
+                };
+            }
+
+            // left bracket
+            if (token.type === "[") {
+                const arr: any = [];
+                const step = this.parseArray(tokens.slice(i + 1), arr);
+                stack.push({
+                    type: "ARRAY",
+                    value: arr,
+                    position: i
+                });
+                i = i + step;
+                continue;
+            }
+
+            // eof
+            if (token.type === "EOF") {
+                while (stack.length > 1) {
+                    this.packgeNode(stack, nodes);
+                }
+                return {
+                    top: stack[0],
+                    length: i,
+                    nodes: nodes
+                };
+            }
+
+            // meet invalid token
+            throw new Error(`Invalid token [${token.type}, ${token.value}] at ${token.position}`);
         }
 
-        if (token.type === "NUMBER") {
-            if (top.isFull) {
-                throw new Error(`Cannot parse a number token when top node is full.`);
-            }
-            const num = NodeFactory.createNumberNode(Number(token.value));
-            if (top.isNotFull) {
-                this.pushToChildren(top, num);
-                return;
-            }
-            else {
-                throw new Error(`Cannot parse a number token when top node is full.`);
-            }
-        }
+        throw new Error(`Parse error`);
     }
 
 }
