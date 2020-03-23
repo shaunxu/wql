@@ -1,11 +1,35 @@
 import { Token } from "./token";
 import * as uuid from "uuid";
 
-export interface Node {
+export type Resource = string;
+
+export type Field = string;
+
+export interface Sort {
+    [key: string]: "ASC" | "DESC";
+}
+
+export interface AbstractSyntaxTree {
+
+    from: Resource;
+
+    select: Field[] | undefined;
+
+    where: ConditionNode | undefined;
+
+    sort: Sort | undefined;
+
+    skip: number | undefined;
+
+    take: number | undefined;
+
+}
+
+export interface ConditionNode {
     type: string;
     value: any;
-    left?: Node;
-    right?: Node;
+    left?: ConditionNode;
+    right?: ConditionNode;
 }
 
 export const OP_PRIORITIES: { [key: string]: number } = {
@@ -28,6 +52,16 @@ export const RIGHT_TYPES = [
     "NODE"
 ];
 
+export const KEYWORDS = [
+    "FROM",
+    "SELECT",
+    "WHERE",
+    "ORDER BY",
+    "SKIP",
+    "TAKE",
+    "EOF"
+]
+
 export const OP_TYPES = Object.keys(OP_PRIORITIES);
 
 export class Parser {
@@ -44,7 +78,7 @@ export class Parser {
         }
     }
 
-    private packgeNode(stack: Token[], nodes: Map<string, Node>): void {
+    private packageConditionNode(stack: Token[], nodes: Map<string, ConditionNode>): void {
         if (stack.length < 3) {
             throw new Error(`Cannot package a node from stack with less than 3 tokens`);
         }
@@ -63,7 +97,7 @@ export class Parser {
             throw new Error(`Invalid operator part at ${op.position} ${op.value}`);
         }
 
-        const node: Node = {
+        const node: ConditionNode = {
             type: op.type,
             value: op.value,
             left: {
@@ -84,29 +118,138 @@ export class Parser {
         });
     }
 
-    private buildNode(node: Node, nodes: Map<string, Node>): void {
+    private buildConditionNode(node: ConditionNode, nodes: Map<string, ConditionNode>): void {
         if (node.left && node.left.type === "NODE") {
-            node.left = nodes.get(node.left.value) as Node;
-            this.buildNode(node.left as Node, nodes);
+            node.left = nodes.get(node.left.value) as ConditionNode;
+            this.buildConditionNode(node.left as ConditionNode, nodes);
         }
         if (node.right && node.right.type === "NODE") {
-            node.right = nodes.get(node.right.value) as Node;
-            this.buildNode(node.right as Node, nodes);
+            node.right = nodes.get(node.right.value) as ConditionNode;
+            this.buildConditionNode(node.right as ConditionNode, nodes);
         }
     }
 
-    public parse(tokens: Token[]): Node {
-        const { top, nodes } = this.parseTokens(tokens);
-        return this.build(top.value, nodes);
+    public parse(tokens: Token[]): AbstractSyntaxTree {
+        const ast: AbstractSyntaxTree = {
+            from: "",
+            select: undefined,
+            where: undefined,
+            sort: undefined,
+            skip: undefined,
+            take: undefined
+        };
+
+        let i = 0;
+        while (i <= tokens.length - 1) {
+            // from
+            i = this.parseFrom(tokens, i, ast);
+
+            // select
+            i = this.parseSelect(tokens, i, ast);
+
+            // where
+            i = this.parseWhere(tokens, i, ast);
+
+            // order by
+            i = this.parseSort(tokens, i, ast);
+
+            // skip
+            i = this.parseSkip(tokens, i, ast);
+
+            // take
+            i = this.parseTake(tokens, i, ast);
+
+            // eof
+            if (tokens[i].type === "EOF") {
+                i++;
+                continue;
+            }
+        }
+
+        return ast;
     }
 
-    private build(rootKey: string, nodes: Map<string, Node>): Node {
-        const root = nodes.get(rootKey) as Node;
-        this.buildNode(root, nodes);
+    private parseFrom(tokens: Token[], start: number, ast: AbstractSyntaxTree): number {
+        let i = start;
+        const token = tokens[i];
+        
+        if (token.type === "FROM") {
+            i++;
+            if (tokens[i].type === "LITERAL") {
+                ast.from = tokens[i].value;
+                return i + 1;
+            }
+            else {
+                throw new Error(`[${tokens[i].position}] "FROM" must follows with one resource.`);
+            }
+        }
+
+        return start;
+    }
+
+    private parseSelect(tokens: Token[], start: number, ast: AbstractSyntaxTree): number {
+        let i = start;
+        let token = tokens[i];
+
+        if (token.type === "SELECT") {
+            const fields: Field[] = [];
+            i++;
+            while (i <= tokens.length - 1) {
+                token = tokens[i];
+                
+                if (token.type === "LITERAL") {
+                    fields.push(token.value);
+                    i++;
+                    continue;
+                }
+
+                if (token.type === "COMMA") {
+                    i++;
+                    continue;
+                }
+
+                if (token.type === "FUNCTION") {
+                    fields.push(token.value);
+                    i++;
+                    continue;
+                }
+
+                if (token.type === "*") {
+                    return i + 1;
+                }
+
+                if (KEYWORDS.some(x => x === token.type)) {
+                    if (fields.length > 0) {
+                        ast.select = fields;
+                    }
+                    return i;
+                }
+
+                throw new Error(`[${i}] "SELECT" must follow with fields, functions, "*" with comma split`);
+            }
+        }
+
+        return start;
+    }
+
+    private parseWhere(tokens: Token[], start: number, ast: AbstractSyntaxTree): number {
+        if (tokens[start].type === "WHERE") {
+            const { top, length, nodes } = this.parseWhereTokens(tokens.slice(start + 1));
+            const node = this.buildWhere(top.value, nodes);
+            ast.where = node;
+            return start + length + 1;
+        }
+
+        return start;
+    }
+
+    private buildWhere(rootKey: string, nodes: Map<string, ConditionNode>): ConditionNode {
+        const root = nodes.get(rootKey) as ConditionNode;
+        this.buildConditionNode(root, nodes);
         return root;
     }
 
-    private parseArray(tokens: Token[], current: any): number {
+    private parseWhereArray(tokens: Token[], current: any): number {
         let i = 0;
         while (i <= tokens.length - 1) {
             const token = tokens[i];
@@ -131,7 +274,7 @@ export class Parser {
             if (token.type === "[") {
                 const sub: any[] = [];
                 current.push(sub);
-                const step = this.parseArray(tokens.slice(i + 1), sub);
+                const step = this.parseWhereArray(tokens.slice(i + 1), sub);
                 i = i + step;
                 continue;
             }
@@ -144,9 +287,9 @@ export class Parser {
         throw new Error(`Parse array failed.`);
     }
 
-    private parseTokens(tokens: Token[]): { top: Token, length: number, nodes: Map<string, Node> } {
+    private parseWhereTokens(tokens: Token[]): { top: Token, length: number, nodes: Map<string, ConditionNode> } {
         const stack: Token[] = [];
-        const nodes: Map<string, Node> = new Map<string, Node>();
+        const nodes: Map<string, ConditionNode> = new Map<string, ConditionNode>();
         let i = 0;
 
         while (i <= tokens.length - 1) {
@@ -175,7 +318,7 @@ export class Parser {
                         const lastOpTokenPriority = OP_PRIORITIES[lastOpToken.type];
                         const thisOpTokenPriority = OP_PRIORITIES[token.type];
                         if (thisOpTokenPriority < lastOpTokenPriority) {
-                            this.packgeNode(stack, nodes);
+                            this.packageConditionNode(stack, nodes);
                             pack = true;
                         }
                         else {
@@ -193,7 +336,7 @@ export class Parser {
 
             // left paren
             if (token.type === "(") {
-                const intermediate = this.parseTokens(tokens.slice(i + 1)); // i + 1 means skip the left paren
+                const intermediate = this.parseWhereTokens(tokens.slice(i + 1)); // i + 1 means skip the left paren
                 stack.push(intermediate.top);
                 intermediate.nodes.forEach((n, k) => {
                     nodes.set(k, n);
@@ -205,7 +348,7 @@ export class Parser {
             // right paren
             if (token.type === ")") {
                 while (stack.length > 1) {
-                    this.packgeNode(stack, nodes);
+                    this.packageConditionNode(stack, nodes);
                 }
                 return {
                     top: stack[0],
@@ -217,7 +360,7 @@ export class Parser {
             // left bracket
             if (token.type === "[") {
                 const arr: any = [];
-                const step = this.parseArray(tokens.slice(i + 1), arr);
+                const step = this.parseWhereArray(tokens.slice(i + 1), arr);
                 stack.push({
                     type: "ARRAY",
                     value: arr,
@@ -227,10 +370,10 @@ export class Parser {
                 continue;
             }
 
-            // eof
-            if (token.type === "EOF") {
+            // end of where (meet new keyword)
+            if (KEYWORDS.some(x => x === token.type)) {
                 while (stack.length > 1) {
-                    this.packgeNode(stack, nodes);
+                    this.packageConditionNode(stack, nodes);
                 }
                 return {
                     top: stack[0],
@@ -246,4 +389,86 @@ export class Parser {
         throw new Error(`Parse error`);
     }
 
+    private parseSort(tokens: Token[], start: number, ast: AbstractSyntaxTree): number {
+        let i = start;
+        let token = tokens[i];
+
+        if (token.type === "ORDER BY") {
+            const sort: Sort = {};
+            i++;
+            while (i <= tokens.length - 1) {
+                if (tokens[i].type === "LITERAL" && ["ASC", "DESC"].some(x => x === tokens[i + 1].type)) {
+                    sort[tokens[i].value] = tokens[i + 1].value;
+                    i = i + 2;
+                    continue;
+                }
+
+                if (tokens[i].type === "COMMA") {
+                    i++;
+                    continue;
+                }
+
+                if (KEYWORDS.some(x => x === token.type)) {
+                    ast.sort = sort;
+                    return i;
+                }
+
+                throw new Error(`[${i}] "SORT" must follow with fields with "ASC" | "DESC"`);
+            }
+        }
+
+        return start;
+    }
+
+    private parseSkip(tokens: Token[], start: number, ast: AbstractSyntaxTree): number {
+        let i = start;
+        const token = tokens[i];
+
+        if (token.type === "SKIP") {
+            i++;
+            if (tokens[i].type === "NUMBER") {
+                const skip = Number(tokens[i].value);
+                if (skip > 0) {
+                    ast.skip = skip;
+                    return i + 1;
+                }
+                else if (skip === 0) {
+                    // skip 0 means no skip
+                    return i + 1;
+                }
+                else {
+                    throw new Error(`[${tokens[i].position}] "SKIP" must follows with number that is greater than or equal to zero.`);
+                }
+            }
+            else {
+                throw new Error(`[${tokens[i].position}] "SKIP" must follows with number.`);
+            }
+        }
+
+        return start;
+    }
+
+    private parseTake(tokens: Token[], start: number, ast: AbstractSyntaxTree): number {
+        let i = start;
+        const token = tokens[i];
+
+        if (token.type === "TAKE") {
+            i++;
+            if (tokens[i].type === "NUMBER") {
+                const take = Number(tokens[i].value);
+                if (take > 0) {
+                    ast.take = take;
+                    return i + 1;
+                }
+                else {
+                    throw new Error(`[${tokens[i].position}] "SKIP" must follows with number that is greater than zero.`);
+                }
+            }
+            else {
+                throw new Error(`[${tokens[i].position}] "SKIP" must follows with number.`);
+            }
+        }
+
+        return start;
+    }
 }

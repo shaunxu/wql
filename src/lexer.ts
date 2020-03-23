@@ -29,6 +29,7 @@ export class Lexer {
                     "DESC"
                 ]) ||
                 this.tokenizeByComma(position, chunk) ||
+                this.tokenizeByStar(position, chunk) ||
                 this.tokenizeByWords(position, chunk, [
                     "=", "!=",
                     ">=", ">",
@@ -191,6 +192,17 @@ export class Lexer {
         const match = /^,/.exec(chunk);
         if (match && match.length >= 0) {
             this.tokenize("COMMA", match[0], position);
+            return match[0].length;
+        }
+        else {
+            return 0;
+        }
+    }
+
+    private tokenizeByStar(position: number, chunk: string): number {
+        const match = /^\*/.exec(chunk);
+        if (match && match.length >= 0) {
+            this.tokenize("*", match[0], position);
             return match[0].length;
         }
         else {

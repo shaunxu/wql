@@ -1,5 +1,21 @@
-import { Node } from "./parser";
+import { ConditionNode, AbstractSyntaxTree } from "./parser";
 import { PreDefinedFunction } from "./pre-defined-fn";
+
+export interface MongoDBQuery {
+
+    collectionName: string;
+
+    project: string[] | undefined;
+
+    condition: any | undefined;
+
+    sort: Array<[string, 1 | -1]> | undefined;
+
+    skip: number | undefined;
+
+    limit: number | undefined;
+
+}
 
 export class Compiler {
 
@@ -7,7 +23,7 @@ export class Compiler {
 
     }
 
-    private async evaluateRightPart(node: Node): Promise<Node> {
+    private async evaluateRightPart(node: ConditionNode): Promise<ConditionNode> {
         if (node.type === "FUNCTION") {
             const fn: string = node.value;
             const name = fn.substring(0, fn.indexOf("("));
@@ -28,7 +44,7 @@ export class Compiler {
         }
     }
 
-    private async compileCondition(current: any, node: Node): Promise<void> {
+    private async compileCondition(current: any, node: ConditionNode): Promise<void> {
         if (node.type === "AND") {
             const left: any = {};
             const right: any = {};
@@ -102,10 +118,25 @@ export class Compiler {
         }
     }
 
-    public async compile(ast: Node): Promise<any> {
-        const condition: any = {};
-        await this.compileCondition(condition, ast);
-        return condition;
+    public async compile(ast: AbstractSyntaxTree): Promise<MongoDBQuery> {
+        const query: MongoDBQuery = {
+            collectionName: ast.from,
+            project: ast.select,
+            condition: {},
+            sort: undefined,
+            skip: ast.skip,
+            limit: ast.take
+        };
+        if (ast.where) {
+            this.compileCondition(query.condition, ast.where);
+        }
+        if (ast.sort) {
+            query.sort = [];
+            for (const key in ast.sort) {
+                query.sort.push([key, ast.sort[key].toUpperCase() === "ASC" ? 1 : -1]);
+            }
+        }
+        return query;
     }
 
 }

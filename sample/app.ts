@@ -48,7 +48,7 @@ import { Compiler } from "../src/compiler";
 // };
 // const query = `FROM projects SELECT _id, name WHERE owner = me() AND updated_at >= dateOffset(-1, "w")`;
 // const query = `a = 1 and (b = 2 or c = 3)`;
-const query = `c = dateOffset(-1, "week") and d = user("shaunxu") and c in users("x", "y", "z")`;
+const query = `from workitems select _id, name where a = 1 and (b = 2 or c = 3) order by _id asc, created_at desc skip 100 take 1000`;
 const lexer = new Lexer(query);
 const tokens = lexer.lex();
 
